@@ -1,91 +1,137 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include "semantic.h"
+#include <string.h>
+
+#include "ast.h"
 #include "symbol.h"
 
-// controla se houve erro semantico
-static int semanticError = 0;
-// controla se o banner ja foi exibido
-static int semanticBannerPrinted = 0;
+char* evalType(ASTNode* node) {
 
-// imprime o banner apenas uma vez
-static void printSemanticBannerOnce() {
-    if (!semanticBannerPrinted) {
-        printf("\n===== ANALISE SEMANTICA =====\n");
-        semanticBannerPrinted = 1;
+    switch(node->type) {
+
+        case AST_INT_LITERAL:
+            return "integer";
+
+        case AST_REAL_LITERAL:
+            return "real";
+
+        case AST_CHAR_LITERAL:
+            return "char";
+
+        case AST_STRING_LITERAL:
+            return "literal";
+
+        case AST_BOOL_LITERAL:
+            return "bool";
+
+        case AST_IDENTIFIER: {
+
+            char* t =
+                findSymbol(node->value);
+
+            if(!t) {
+                printf("Variavel nao declarada %s\n",
+                       node->value);
+                exit(1);
+            }
+
+            return t;
+        }
+
+        case AST_BINARY_OP: {
+
+            char* left =
+                evalType(node->child1);
+
+            char* right =
+                evalType(node->child2);
+
+            if(strcmp(left,right)!=0) {
+
+                printf("Tipos incompatíveis\n");
+                exit(1);
+            }
+
+            return left;
+        }
+
+        default:
+            return "void";
     }
 }
 
-// impressao final
-static void printSemanticResult() {
-    if (semanticError) return;
-    printSemanticBannerOnce();
-    printf("Analise semantica concluida com sucesso!\n");
-}
+void semantic(ASTNode* node) {
 
-void semBeginProgram() {
-    atexit(printSemanticResult);
-}
+    while(node) {
 
-void semEndProgram() {
-    // nada a fazer
-}
+        switch(node->type) {
 
-// controle de escopo
-void semBeginBlock() {
-    enterScope();
-}
+            case AST_VAR_DECL: {
 
-void semEndBlock() {
-    exitScope();
-}
+                char* varType =
+                    node->child1->value;
 
-// declaracao de variavel
-void semDeclareVariable(const char *name, TokenType type) {
-    if (findSymbol(name)) {
-        semanticError = 1;
-        printSemanticBannerOnce();
-        printf("ERRO SEMANTICO\n");
-        printf("Variavel '%s' redeclarada\n", name);
-        exit(1);
-    }
-    addSymbol(name, type);
-}
+                insertSymbol(
+                    node->value,
+                    varType
+                );
 
-// atribuicao
-void semAssign(const char *name) {
-    if (!findSymbol(name)) {
-        semanticError = 1;
-        printSemanticBannerOnce();
-        printf("ERRO SEMANTICO\n");
-        printf("Variavel '%s' nao declarada\n", name);
-        exit(1);
-    }
-}
+                char* exprType =
+                    evalType(node->child2);
 
-// uso em expressao
-void semUseVariable(const char *name) {
-    if (!findSymbol(name)) {
-        semanticError = 1;
-        printSemanticBannerOnce();
-        printf("ERRO SEMANTICO\n");
-        printf("Variavel '%s' nao declarada\n", name);
-        exit(1);
-    }
-}
+                if(strcmp(varType,exprType)!=0) {
 
-// condicoes (if / for)
-void semCheckCondition() {
-    // futura validacao de tipo bool
-}
+                    printf(
+                        "Erro semantico em %s\n",
+                        node->value
+                    );
 
-// incremento do for
-void semCheckIncrement(const char *name) {
-    if (!findSymbol(name)) {
-        semanticError = 1;
-        printSemanticBannerOnce();
-        printf("ERRO SEMANTICO\n");
-        printf("Variavel '%s' nao declarada\n", name);
-        exit(1);
+                    exit(1);
+                }
+
+                break;
+            }
+
+            case AST_ASSIGN: {
+
+                char* varType =
+                    findSymbol(node->value);
+
+                if(!varType) {
+
+                    printf(
+                       "Variavel nao declarada %s\n",
+                       node->value
+                    );
+
+                    exit(1);
+                }
+
+                char* exprType =
+                    evalType(node->child1);
+
+                if(strcmp(varType,exprType)!=0) {
+
+                    printf(
+                       "Atribuicao invalida %s\n",
+                       node->value
+                    );
+
+                    exit(1);
+                }
+
+                break;
+            }
+
+            default:
+                break;
+        }
+
+        semantic(node->child1);
+        semantic(node->child2);
+        semantic(node->child3);
+        semantic(node->child4);
+
+        node = node->next;
     }
 }
