@@ -3,447 +3,415 @@
 #include <string.h>
 
 #include "token.h"
-#include "semantic.h"
+#include "ast.h"
 
-// LEXER
-Token getNextToken();
+extern Token getNextToken();
 
-// token atual
 Token currentToken;
-
-// UTIL
-void syntaxError(const char *msg) {
-    printf("\nERRO SINTATICO\n");
-    printf("%s\n", msg);
-    printf("Token encontrado: %s\n", currentToken.lexeme);
-    exit(1);
-}
 
 void advance() {
     currentToken = getNextToken();
-
-    // ERRO LEXICO
-    if (currentToken.type == TOK_ERROR) {
-        printf("\nERRO LEXICO\n");
-        printf("Lexema invalido: %s\n", currentToken.lexeme);
-        exit(1);
-    }
 }
 
-void match(TokenType expected) {
-    if (currentToken.type == expected) {
+void syntaxError(const char* msg) {
+
+    printf("\nERRO SINTATICO\n");
+    printf("%s\n", msg);
+    printf("Token encontrado: %s\n", currentToken.lexeme);
+
+    exit(1);
+}
+
+void eat(TokenType expected) {
+
+    if(currentToken.type == expected)
         advance();
-    } else {
+    else
         syntaxError("token inesperado");
-    }
 }
 
-// PROTOTIPOS
+int isType(TokenType t) {
 
-void programa();
-void listaDeclaracoes();
-void declaracao();
-
-void declaracaoVariavel();
-void tipo();
-
-void comando();
-void atribuicao();
-
-void comandoIf();
-void comandoFor();
-
-void bloco();
-
-void expressao();
-void expressaoRelacional();
-void expressaoAritmetica();
-
-void termo();
-void fator();
-
-void opRelacional();
-void literal();
-
-// PROGRAMA
-
-void parseProgram() {
-
-    semBeginProgram();
-
-    currentToken = getNextToken();
-
-    if (currentToken.type == TOK_EOF) {
-        syntaxError("programa vazio");
-    }
-
-    programa();
-
-    if (currentToken.type != TOK_EOF) {
-        syntaxError("tokens apos fim do programa");
-    }
-
-    semEndProgram();
-
-    printf("\nAnalise sintatica concluida com sucesso!\n");
+    return t == TOK_INTEGER ||
+           t == TOK_REAL ||
+           t == TOK_CHAR ||
+           t == TOK_LITERAL ||
+           t == TOK_BOOL;
 }
 
-//GRAMATICA
+ASTNode* parseExpression();
 
-void programa() {
-    listaDeclaracoes();
-}
+ASTNode* parseFactor() {
 
-// listaDeclaracoes ::= declaracao*
-void listaDeclaracoes() {
-    while (
-        currentToken.type == TOK_INTEGER ||
-        currentToken.type == TOK_REAL ||
-        currentToken.type == TOK_CHAR ||
-        currentToken.type == TOK_LITERAL ||
-        currentToken.type == TOK_BOOL ||
-        currentToken.type == TOK_IF ||
-        currentToken.type == TOK_FOR ||
-        currentToken.type == TOK_LEFT_BRACE ||
-        currentToken.type == TOK_ID
-    ) {
-        declaracao();
-    }
-}
+    ASTNode* node;
 
-// declaracao
-void declaracao() {
-    if (
-        currentToken.type == TOK_INTEGER ||
-        currentToken.type == TOK_REAL ||
-        currentToken.type == TOK_CHAR ||
-        currentToken.type == TOK_LITERAL ||
-        currentToken.type == TOK_BOOL
-    ) {
-        declaracaoVariavel();
-    } else {
-        comando();
-    }
-}
-
-// declaracao_variavel ::= tipo id = expressao ;
-void declaracaoVariavel() {
-    TokenType tipoVar = currentToken.type;
-
-    tipo();
-    char nome[MAX_LEXEMA];
-    strcpy(nome, currentToken.lexeme);
-
-    match(TOK_ID);
-    semDeclareVariable(nome, tipoVar);
-
-    match(TOK_ASSIGN);
-
-    expressao();
-
-    match(TOK_SEMICOLON);
-}
-
-// tipo
-void tipo() {
-    switch (currentToken.type) {
-
-        case TOK_INTEGER:
-            match(TOK_INTEGER);
-            break;
-
-        case TOK_REAL:
-            match(TOK_REAL);
-            break;
-
-        case TOK_CHAR:
-            match(TOK_CHAR);
-            break;
-
-        case TOK_LITERAL:
-            match(TOK_LITERAL);
-            break;
-
-        case TOK_BOOL:
-            match(TOK_BOOL);
-            break;
-
-        default:
-            syntaxError("tipo invalido");
-    }
-}
-
-// comando
-void comando() {
-    switch (currentToken.type) {
-
-        case TOK_IF:
-            comandoIf();
-            break;
-
-        case TOK_FOR:
-            comandoFor();
-            break;
-
-        case TOK_LEFT_BRACE:
-            bloco();
-            break;
+    switch(currentToken.type) {
 
         case TOK_ID:
-            atribuicao();
-            break;
 
-        default:
-            syntaxError("comando invalido");
-    }
-}
+            node = createNode(
+                AST_IDENTIFIER,
+                currentToken.lexeme
+            );
 
-// atribuicao ::= id = expressao ;
-void atribuicao() {
+            eat(TOK_ID);
 
-    char nome[MAX_LEXEMA];
-    strcpy(nome, currentToken.lexeme);
-
-    match(TOK_ID);
-
-    semAssign(nome);
-
-    match(TOK_ASSIGN);
-
-    expressao();
-
-    match(TOK_SEMICOLON);
-}
-
-// if
-void comandoIf() {
-
-    match(TOK_IF);
-    match(TOK_LEFT_PAREN);
-
-    expressao();
-    semCheckCondition();
-
-    match(TOK_RIGHT_PAREN);
-
-    bloco();
-
-    if (currentToken.type == TOK_ELSE) {
-        match(TOK_ELSE);
-        bloco();
-    }
-}
-
-// for
-void comandoFor() {
-
-    match(TOK_FOR);
-    match(TOK_LEFT_PAREN);
-
-    atribuicao();
-
-    expressao();
-    semCheckCondition();
-
-    match(TOK_SEMICOLON);
-
-    char nome[MAX_LEXEMA];
-    strcpy(nome, currentToken.lexeme);
-
-    match(TOK_ID);
-    semAssign(nome);
-
-    match(TOK_ASSIGN);
-
-    expressao();
-
-    semCheckIncrement(nome);
-
-    match(TOK_RIGHT_PAREN);
-
-    bloco();
-}
-
-// bloco ::= { declaracao* }
-void bloco() {
-
-    match(TOK_LEFT_BRACE);
-
-    semBeginBlock();
-
-    while (
-        currentToken.type == TOK_INTEGER ||
-        currentToken.type == TOK_REAL ||
-        currentToken.type == TOK_CHAR ||
-        currentToken.type == TOK_LITERAL ||
-        currentToken.type == TOK_BOOL ||
-        currentToken.type == TOK_IF ||
-        currentToken.type == TOK_FOR ||
-        currentToken.type == TOK_LEFT_BRACE ||
-        currentToken.type == TOK_ID
-    ) {
-        declaracao();
-    }
-
-    semEndBlock();
-
-    match(TOK_RIGHT_BRACE);
-}
-
-// expressao
-void expressao() {
-    expressaoRelacional();
-}
-
-// relacional
-void expressaoRelacional() {
-
-    expressaoAritmetica();
-
-    if (
-        currentToken.type == TOK_GT ||
-        currentToken.type == TOK_GTE ||
-        currentToken.type == TOK_LT ||
-        currentToken.type == TOK_LTE ||
-        currentToken.type == TOK_EQ ||
-        currentToken.type == TOK_NE
-    ) {
-        opRelacional();
-        expressaoAritmetica();
-    }
-}
-
-// aritmetica
-void expressaoAritmetica() {
-
-    termo();
-
-    while (
-        currentToken.type == TOK_PLUS ||
-        currentToken.type == TOK_MINUS
-    ) {
-        if (currentToken.type == TOK_PLUS) {
-            match(TOK_PLUS);
-        } else {
-            match(TOK_MINUS);
-        }
-
-        termo();
-    }
-}
-
-// termo
-void termo() {
-
-    fator();
-
-    while (
-        currentToken.type == TOK_MULT ||
-        currentToken.type == TOK_DIV
-    ) {
-        if (currentToken.type == TOK_MULT) {
-            match(TOK_MULT);
-        } else {
-            match(TOK_DIV);
-        }
-
-        fator();
-    }
-}
-
-// fator
-void fator() {
-
-    if (currentToken.type == TOK_ID) {
-
-        semUseVariable(currentToken.lexeme);
-        match(TOK_ID);
-
-    } else if (
-        currentToken.type == TOK_INT_LITERAL ||
-        currentToken.type == TOK_REAL_LITERAL ||
-        currentToken.type == TOK_CHAR_LITERAL ||
-        currentToken.type == TOK_STRING_LITERAL ||
-        currentToken.type == TOK_TRUE ||
-        currentToken.type == TOK_FALSE
-    ) {
-        literal();
-
-    } else if (currentToken.type == TOK_LEFT_PAREN) {
-
-        match(TOK_LEFT_PAREN);
-        expressao();
-        match(TOK_RIGHT_PAREN);
-
-    } else {
-        syntaxError("fator invalido");
-    }
-}
-
-// operadores relacionais
-void opRelacional() {
-
-    switch (currentToken.type) {
-
-        case TOK_GT:
-            match(TOK_GT);
-            break;
-
-        case TOK_GTE:
-            match(TOK_GTE);
-            break;
-
-        case TOK_LT:
-            match(TOK_LT);
-            break;
-
-        case TOK_LTE:
-            match(TOK_LTE);
-            break;
-
-        case TOK_EQ:
-            match(TOK_EQ);
-            break;
-
-        case TOK_NE:
-            match(TOK_NE);
-            break;
-
-        default:
-            syntaxError("operador relacional invalido");
-    }
-}
-
-// literais
-void literal() {
-
-    switch (currentToken.type) {
+            return node;
 
         case TOK_INT_LITERAL:
-            match(TOK_INT_LITERAL);
-            break;
+
+            node = createNode(
+                AST_INT_LITERAL,
+                currentToken.lexeme
+            );
+
+            eat(TOK_INT_LITERAL);
+
+            return node;
 
         case TOK_REAL_LITERAL:
-            match(TOK_REAL_LITERAL);
-            break;
+
+            node = createNode(
+                AST_REAL_LITERAL,
+                currentToken.lexeme
+            );
+
+            eat(TOK_REAL_LITERAL);
+
+            return node;
 
         case TOK_CHAR_LITERAL:
-            match(TOK_CHAR_LITERAL);
-            break;
+
+            node = createNode(
+                AST_CHAR_LITERAL,
+                currentToken.lexeme
+            );
+
+            eat(TOK_CHAR_LITERAL);
+
+            return node;
 
         case TOK_STRING_LITERAL:
-            match(TOK_STRING_LITERAL);
-            break;
+
+            node = createNode(
+                AST_STRING_LITERAL,
+                currentToken.lexeme
+            );
+
+            eat(TOK_STRING_LITERAL);
+
+            return node;
 
         case TOK_TRUE:
-            match(TOK_TRUE);
-            break;
-
         case TOK_FALSE:
-            match(TOK_FALSE);
-            break;
+
+            node = createNode(
+                AST_BOOL_LITERAL,
+                currentToken.lexeme
+            );
+
+            advance();
+
+            return node;
+
+        case TOK_LEFT_PAREN:
+
+            eat(TOK_LEFT_PAREN);
+
+            node = parseExpression();
+
+            eat(TOK_RIGHT_PAREN);
+
+            return node;
 
         default:
-            syntaxError("literal invalido");
+            syntaxError("fator invalido");
     }
+
+    return NULL;
+}
+
+ASTNode* parseTerm() {
+
+    ASTNode* left = parseFactor();
+
+    while(currentToken.type == TOK_MULT ||
+          currentToken.type == TOK_DIV) {
+
+        char op[10];
+        strcpy(op, currentToken.lexeme);
+
+        advance();
+
+        ASTNode* right = parseFactor();
+
+        ASTNode* node =
+            createNode(AST_BINARY_OP, op);
+
+        node->child1 = left;
+        node->child2 = right;
+
+        left = node;
+    }
+
+    return left;
+}
+
+ASTNode* parseArithmetic() {
+
+    ASTNode* left = parseTerm();
+
+    while(currentToken.type == TOK_PLUS ||
+          currentToken.type == TOK_MINUS) {
+
+        char op[10];
+        strcpy(op, currentToken.lexeme);
+
+        advance();
+
+        ASTNode* right = parseTerm();
+
+        ASTNode* node =
+            createNode(AST_BINARY_OP, op);
+
+        node->child1 = left;
+        node->child2 = right;
+
+        left = node;
+    }
+
+    return left;
+}
+
+ASTNode* parseExpression() {
+
+    ASTNode* left = parseArithmetic();
+
+    if(currentToken.type == TOK_GT ||
+       currentToken.type == TOK_GTE ||
+       currentToken.type == TOK_LT ||
+       currentToken.type == TOK_LTE ||
+       currentToken.type == TOK_EQ ||
+       currentToken.type == TOK_NE) {
+
+        char op[10];
+        strcpy(op, currentToken.lexeme);
+
+        advance();
+
+        ASTNode* right = parseArithmetic();
+
+        ASTNode* node =
+            createNode(AST_BINARY_OP, op);
+
+        node->child1 = left;
+        node->child2 = right;
+
+        return node;
+    }
+
+    return left;
+}
+
+ASTNode* parseVarDecl() {
+
+    char type[50];
+    strcpy(type, currentToken.lexeme);
+
+    advance();
+
+    char id[100];
+    strcpy(id, currentToken.lexeme);
+
+    eat(TOK_ID);
+
+    eat(TOK_ASSIGN);
+
+    ASTNode* expr = parseExpression();
+
+    eat(TOK_SEMICOLON);
+
+    ASTNode* node =
+        createNode(AST_VAR_DECL, id);
+
+    node->child1 =
+        createNode(AST_IDENTIFIER, type);
+
+    node->child2 = expr;
+
+    return node;
+}
+
+ASTNode* parseAssignmentNoSemi() {
+
+    char id[100];
+    strcpy(id, currentToken.lexeme);
+
+    eat(TOK_ID);
+
+    eat(TOK_ASSIGN);
+
+    ASTNode* expr = parseExpression();
+
+    ASTNode* node =
+        createNode(AST_ASSIGN, id);
+
+    node->child1 = expr;
+
+    return node;
+}
+
+ASTNode* parseAssignment() {
+
+    ASTNode* node =
+        parseAssignmentNoSemi();
+
+    eat(TOK_SEMICOLON);
+
+    return node;
+}
+
+ASTNode* parseCommand();
+
+ASTNode* parseBlock() {
+
+    eat(TOK_LEFT_BRACE);
+
+    ASTNode* block =
+        createNode(AST_BLOCK, "");
+
+    ASTNode* last = NULL;
+
+    while(currentToken.type != TOK_RIGHT_BRACE) {
+
+        ASTNode* cmd =
+            parseCommand();
+
+        if(last == NULL)
+            block->child1 = cmd;
+        else
+            last->next = cmd;
+
+        last = cmd;
+    }
+
+    eat(TOK_RIGHT_BRACE);
+
+    return block;
+}
+
+ASTNode* parseIf() {
+
+    eat(TOK_IF);
+
+    eat(TOK_LEFT_PAREN);
+
+    ASTNode* cond =
+        parseExpression();
+
+    eat(TOK_RIGHT_PAREN);
+
+    ASTNode* thenBlock =
+        parseBlock();
+
+    ASTNode* elseBlock = NULL;
+
+    if(currentToken.type == TOK_ELSE) {
+
+        eat(TOK_ELSE);
+
+        elseBlock = parseBlock();
+    }
+
+    ASTNode* node =
+        createNode(AST_IF, "if");
+
+    node->child1 = cond;
+    node->child2 = thenBlock;
+    node->child3 = elseBlock;
+
+    return node;
+}
+
+ASTNode* parseFor() {
+
+    eat(TOK_FOR);
+
+    eat(TOK_LEFT_PAREN);
+
+    ASTNode* init =
+        parseAssignmentNoSemi();
+
+    eat(TOK_SEMICOLON);
+
+    ASTNode* cond =
+        parseExpression();
+
+    eat(TOK_SEMICOLON);
+
+    ASTNode* inc =
+        parseAssignmentNoSemi();
+
+    eat(TOK_RIGHT_PAREN);
+
+    ASTNode* body =
+        parseBlock();
+
+    ASTNode* node =
+        createNode(AST_FOR, "for");
+
+    node->child1 = init;
+    node->child2 = cond;
+    node->child3 = inc;
+    node->child4 = body;
+
+    return node;
+}
+
+ASTNode* parseCommand() {
+
+    if(currentToken.type == TOK_IF)
+        return parseIf();
+
+    if(currentToken.type == TOK_FOR)
+        return parseFor();
+
+    if(currentToken.type == TOK_LEFT_BRACE)
+        return parseBlock();
+
+    if(currentToken.type == TOK_ID)
+        return parseAssignment();
+
+    syntaxError("comando invalido");
+
+    return NULL;
+}
+
+ASTNode* parseProgram() {
+
+    advance();
+
+    ASTNode* root =
+        createNode(AST_PROGRAM, "program");
+
+    ASTNode* last = NULL;
+
+    while(currentToken.type != TOK_EOF) {
+
+        ASTNode* node;
+
+        if(isType(currentToken.type))
+            node = parseVarDecl();
+        else
+            node = parseCommand();
+
+        if(last == NULL)
+            root->child1 = node;
+        else
+            last->next = node;
+
+        last = node;
+    }
+
+    return root;
 }
