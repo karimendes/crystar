@@ -1,26 +1,34 @@
 #include <stdio.h>
 
-#include "token.h"
 #include "ast.h"
 
+// Léxica
 void initLexer(const char *filename);
 void closeLexer();
 
+// Sintática
 ASTNode* parseProgram();
 
-void printAST(ASTNode* node, int level);
+// Semântica
+void semantic(ASTNode* node);
 
 int main() {
 
+    printf("Iniciando compilacao...\n");
+
     initLexer("codigo.star");
 
-    ASTNode* ast = parseProgram();
+    ASTNode* root = parseProgram();
 
-    printf("\n===== AST =====\n\n");
+    printf("Analise sintatica concluida com sucesso!\n");
 
-    printAST(ast, 0);
+    semantic(root);
+
+    printf("Analise semantica concluida com sucesso!\n");
 
     closeLexer();
+
+    printf("Compilacao finalizada sem erros.\n");
 
     return 0;
 }
